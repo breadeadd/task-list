@@ -9,6 +9,7 @@ function App() {
   //stateful variable
   const [todos, setTodos] = useState([])
   const [todoValue, setTodoValue] = useState('')
+  const [completed, setCompleted] = useState([]);
 
   function persistData(newList) {
     localStorage.setItem('todos', JSON.stringify({ todos: newList }))
@@ -34,6 +35,13 @@ function App() {
     handleDeleteTodo(index)
   }
 
+  function handleCompleteTodo(index) {
+    const todo = todos[index]
+    setCompleted((prev) => [...prev, todo])
+
+    handleDeleteTodo(index)
+  }
+
   useEffect(() => {
     if (!localStorage) {
       return
@@ -53,9 +61,9 @@ function App() {
   return (
     <>
       <TodoInput todoValue={todoValue} setTodoValue={setTodoValue} handleAddTodos={handleAddTodos} />
-      <TodoList handleEditTodo={handleEditTodo} handleDeleteTodo={handleDeleteTodo} todos={todos} />
+      <TodoList handleCompleteTodo={handleCompleteTodo} handleEditTodo={handleEditTodo} handleDeleteTodo={handleDeleteTodo} todos={todos} />
       <SessionHeader />
-      <CompletedList />
+      <CompletedList todos={completed} />
     </>
   )
 }

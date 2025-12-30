@@ -1,7 +1,7 @@
 import React from 'react'
 
 export default function TodoCard(props) {
-const { children, handleDeleteTodo, index, handleEditTodo } = props
+const { children, handleDeleteTodo, index, handleEditTodo, handleCompleteTodo } = props
 
 
   return (
@@ -23,7 +23,9 @@ const { children, handleDeleteTodo, index, handleEditTodo } = props
             </button>
 
             {/* Completed Button */}
-            <button>
+            <button onClick={() => {
+                handleCompleteTodo(index)
+            }}>
                 <i class="fa-solid fa-check"></i>
             </button>
         </div>            

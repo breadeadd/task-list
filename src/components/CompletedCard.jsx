@@ -1,13 +1,12 @@
 import React, { memo } from 'react'
 
-export default function CompletedCard(props) {
-const { children } = props
-
+const CompletedCard = memo(({ children }) => {
   return (
     <li className="completedItem">
-        {children}
-        
-        <i class="fa-regular fa-star"></i>
+      {children}
+      <i className="fa-regular fa-star"></i>
     </li>
   )
-}
+})
+
+export default CompletedCard
