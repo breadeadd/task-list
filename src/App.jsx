@@ -12,13 +12,17 @@ function App() {
   const [completed, setCompleted] = useState([]);
   const sessionCount= completed.length;
 
-  function persistData(newList) {
+  function persistTodos(newList) {
     localStorage.setItem('todos', JSON.stringify({ todos: newList }))
+  }
+
+  function persistCompleted(newList) {
+    localStorage.setItem('completed', JSON.stringify({ completed: newList }))
   }
   
   function handleAddTodos(newTodo) {
     const newTodoList = [...todos, newTodo]
-    persistData(newTodoList)
+    persistTodos(newTodoList)
     setTodos(newTodoList)
   }
 
@@ -26,7 +30,7 @@ function App() {
     const newTodoList = todos.filter((todo, todoIndex) => {
       return todoIndex !== index
     })
-    persistData(newTodoList)
+    persistTodos(newTodoList)
     setTodos(newTodoList)
   }
 
@@ -38,13 +42,17 @@ function App() {
 
   function handleCompleteTodo(index) {
     const todo = todos[index]
-    setCompleted((prev) => [...prev, todo])
-
+    setCompleted((prev) => {
+      const updated = [...prev, todo]
+      persistCompleted(updated)
+      return updated
+    })
     handleDeleteTodo(index)
   }
 
   function handleResetSession() {
     setCompleted([])
+    persistCompleted([])
   }
 
   useEffect(() => {
@@ -52,14 +60,17 @@ function App() {
       return
     }
 
-    let localTodos = localStorage.getItem('todos')
-    if(!localTodos) {
-      return
+    const localTodosRaw = localStorage.getItem('todos')
+    if (localTodosRaw) {
+      const parsed = JSON.parse(localTodosRaw).todos || []
+      setTodos(parsed)
     }
 
-    console.log(localTodos)
-    localTodos = JSON.parse(localTodos).todos
-    setTodos(localTodos)
+    const localCompletedRaw = localStorage.getItem('completed')
+    if (localCompletedRaw) {
+      const parsedCompleted = JSON.parse(localCompletedRaw).completed || []
+      setCompleted(parsedCompleted)
+    }
 
   }, [])
 
