@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { DndContext, closestCenter } from "@dnd-kit/core"
 import { arrayMove } from "@dnd-kit/sortable" 
 import TodoInput from "./components/TodoInput"
@@ -19,7 +19,21 @@ const App = () => {
   const [lists, setLists] = useState([])
   const [activeListId, setActiveListId] = useState(null)
   const [pendingRenameListId, setPendingRenameListId] = useState(null)
+  const [editingFromListId, setEditingFromListId] = useState(null)
+  const todoInputRef = useRef(null)
   const sessionCount= completed.length;
+
+  function focusTodoInput() {
+    if (!todoInputRef.current) return
+
+    requestAnimationFrame(() => {
+      const input = todoInputRef.current
+      input.focus()
+
+      const end = input.value.length
+      input.setSelectionRange(end, end)
+    })
+  }
 
   //theme save
   const [theme, setTheme] = useState(() => {
@@ -54,6 +68,24 @@ const App = () => {
       text: newTodo
     }
 
+    if (editingFromListId !== null) {
+      const listExists = lists.some((list) => list.id === editingFromListId)
+
+      if (listExists) {
+        const updatedLists = lists.map((list) =>
+          list.id === editingFromListId
+            ? { ...list, todos: [...list.todos, newTodoItem] }
+            : list
+        )
+        setLists(updatedLists)
+        persistLists(updatedLists)
+        setEditingFromListId(null)
+        return
+      }
+
+      setEditingFromListId(null)
+    }
+
     const newTodoList = [...todos, newTodoItem]
     persistTodos(newTodoList)
     setTodos(newTodoList)
@@ -70,7 +102,9 @@ const App = () => {
   function handleEditTodo(index) {
     const valueToBeEdited = todos[index]
     setTodoValue(valueToBeEdited.text)
+    setEditingFromListId(null)
     handleDeleteTodo(index)
+    focusTodoInput()
   }
 
   function handleCompleteTodo(index) {
@@ -106,7 +140,9 @@ const App = () => {
     if (!valueToBeEdited) return
 
     setTodoValue(valueToBeEdited.text)
+    setEditingFromListId(listId)
     handleDeleteListTodo(listId, index)
+    focusTodoInput()
   }
 
   function handleCompleteListTodo(listId, index) {
@@ -346,7 +382,12 @@ const App = () => {
   return (
     <div className="App" data-theme={theme}>
       <ThemeToggle theme={theme} setTheme={setTheme} />
-      <TodoInput todoValue={todoValue} setTodoValue={setTodoValue} handleAddTodos={handleAddTodos} />
+      <TodoInput
+        inputRef={todoInputRef}
+        todoValue={todoValue}
+        setTodoValue={setTodoValue}
+        handleAddTodos={handleAddTodos}
+      />
       <DndContext collisionDetection={closestCenter} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
         <TodoList
           containerId={ROOT_TODO_CONTAINER}
