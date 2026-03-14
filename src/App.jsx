@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react"
+import { DndContext, closestCenter } from "@dnd-kit/core"
+import { arrayMove } from "@dnd-kit/sortable" 
 import TodoInput from "./components/TodoInput"
 import TodoList from "./components/TodoList"
 import SessionHeader from "./components/SessionHeader" 
@@ -42,6 +44,7 @@ const App = () => {
     localStorage.setItem('completed', JSON.stringify({ completed: newList }))
   }
   
+  //Todos
   function handleAddTodos(newTodo) {
     const newTodoItem = {
       id: Date.now(),
@@ -80,6 +83,20 @@ const App = () => {
   function handleResetSession() {
     setCompleted([])
     persistCompleted([])
+  }
+
+  //Handling todo movement
+  const handleDragEnd = (event) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = todos.findIndex((item) => item.id === active.id)
+    const newIndex = todos.findIndex((item) => item.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+
+    const reordered = arrayMove(todos, oldIndex, newIndex)
+    setTodos(reordered)
+    persistTodos(reordered)
   }
 
   // lists
@@ -196,7 +213,9 @@ const App = () => {
     <div className="App" data-theme={theme}>
       <ThemeToggle theme={theme} setTheme={setTheme} />
       <TodoInput todoValue={todoValue} setTodoValue={setTodoValue} handleAddTodos={handleAddTodos} />
-      <TodoList handleCompleteTodo={handleCompleteTodo} handleEditTodo={handleEditTodo} handleDeleteTodo={handleDeleteTodo} todos={todos} />
+      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <TodoList handleCompleteTodo={handleCompleteTodo} handleEditTodo={handleEditTodo} handleDeleteTodo={handleDeleteTodo} todos={todos} />
+      </DndContext>
       <ListsContainer
         lists={lists}
         activeListId={activeListId}

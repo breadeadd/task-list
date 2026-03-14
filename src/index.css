@@ -67,10 +67,9 @@ header,
 .completedItem,
 button,
 input {
-  transition: background-color 250ms ease-in-out,
-              color 250ms ease-in-out,
-              border-color 250ms ease-in-out,
-              transform 250ms ease-in-out;
+  transition: background-color 200ms ease-in-out,
+              color 200ms ease-in-out,
+              border-color 200ms ease-in-out;
 }
 
 header {

@@ -19,7 +19,12 @@ const TodoCard = ({ id, children, handleDeleteTodo, index, handleEditTodo, handl
 
   return (
     <li ref={setNodeRef} style={style} className='todoItem'>
-        <i className="fa-solid fa-grip-lines" {...attributes} {...listeners}></i>
+        <i
+            className="fa-solid fa-grip-lines"
+            {...attributes}
+            {...listeners}
+            style={{ cursor: 'grab', touchAction: 'none' }}
+        ></i>
         {children}
         <div className="actionsContainer">
             {/* Delete Button */}
