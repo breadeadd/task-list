@@ -200,8 +200,6 @@ p {
 }
 
 .listHeader {
-  display: flex;
-  justify-content: space-between;
   font-size: 1em;
 }
 
@@ -217,6 +215,12 @@ p {
 
 .fa-pencil, .fa-floppy-disk {
   margin-left: 12px;
+}
+
+.listContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 @media (min-width: 640px) {
