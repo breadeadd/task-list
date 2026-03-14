@@ -2,28 +2,31 @@ import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-const TodoCard = ({ id, children, handleDeleteTodo, index, handleEditTodo, handleCompleteTodo }) => {
+const TodoCard = ({ id, children, handleDeleteTodo, index, handleEditTodo, handleCompleteTodo, isDragActive = false, isInteractionDisabled = false }) => {
     const {
         setNodeRef,
         attributes,
         listeners,
         transform,
         transition,
-    } = useSortable({ id })
+    } = useSortable({ id, disabled: isInteractionDisabled })
+
+    const dragTransform = CSS.Transform.toString(transform)
 
     const style = {
-        transform: CSS.Transform.toString(transform),
+        transform: isDragActive && dragTransform ? `${dragTransform} scale(1.02)` : dragTransform,
         transition,
+        zIndex: isDragActive ? 30 : undefined,
     }
 
 
   return (
-    <li ref={setNodeRef} style={style} className='todoItem'>
+    <li ref={setNodeRef} style={style} className={`todoItem${isDragActive ? ' isDragging' : ''}`}>
         <i
-            className="fa-solid fa-grip-lines"
+            className={`fa-solid fa-grip-lines${isDragActive ? ' isDragging' : ''}`}
             {...attributes}
             {...listeners}
-            style={{ cursor: 'grab', touchAction: 'none' }}
+            style={{ cursor: isInteractionDisabled ? 'default' : isDragActive ? 'grabbing' : 'grab', touchAction: 'none' }}
         ></i>
         {children}
         <div className="actionsContainer">

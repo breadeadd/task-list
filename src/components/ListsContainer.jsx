@@ -1,8 +1,11 @@
 import React from 'react'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import ListHeader from './ListHeader'
 
 const ListsContainer = ({
   lists,
+  activeDragId,
+  activeDragType,
   activeListId,
   onSelectList,
   pendingRenameListId,
@@ -18,12 +21,20 @@ const ListsContainer = ({
   return (
     <div className = "listContainer">
         <div style={{ marginLeft: 'auto' }}>
-          <i onClick={handleAddList} className="fa-solid fa-plus"></i>
+          Create Lists <i onClick={handleAddList} className="fa-solid fa-plus"></i>
         </div>
+
+        <SortableContext
+          items={lists.map((list) => `list-section-${list.id}`)}
+          strategy={verticalListSortingStrategy}
+        >
+          
         {lists.map((list) => (
           <ListHeader 
           key={list.id} 
           id = {list.id}
+          activeDragId={activeDragId}
+          activeDragType={activeDragType}
           initialTitle={list.title} 
           todos={list.todos}
           isActive={activeListId === list.id}
@@ -37,6 +48,7 @@ const ListsContainer = ({
           onCompleteTodo={handleCompleteListTodo}
           />
         ))}
+        </SortableContext>
     </div>
   )
 }

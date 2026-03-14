@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { DndContext, closestCenter } from "@dnd-kit/core"
+import { DndContext, closestCenter, pointerWithin, useSensor, useSensors, PointerSensor, TouchSensor } from "@dnd-kit/core"
 import { arrayMove } from "@dnd-kit/sortable" 
 import TodoInput from "./components/TodoInput"
 import TodoList from "./components/TodoList"
@@ -9,6 +9,22 @@ import ThemeToggle from "./components/ThemeToggle"
 import ListsContainer from "./components/ListsContainer"
 
 const ROOT_TODO_CONTAINER = 'root-todos'
+
+function listSectionCollisionDetection(args) {
+  if (args.active && isListSectionId(args.active.id)) {
+    const hits = pointerWithin(args).filter(({ id }) => isListSectionId(id))
+    if (hits.length > 0) return hits
+  }
+  return closestCenter(args)
+}
+
+function isListSectionId(id) {
+  return String(id).startsWith('list-section-')
+}
+
+function parseListIdFromSectionId(id) {
+  return Number(String(id).replace('list-section-', ''))
+}
 
 const App = () => {
 
@@ -20,6 +36,12 @@ const App = () => {
   const [activeListId, setActiveListId] = useState(null)
   const [pendingRenameListId, setPendingRenameListId] = useState(null)
   const [editingFromListId, setEditingFromListId] = useState(null)
+  const [activeDragId, setActiveDragId] = useState(null)
+  const [activeDragType, setActiveDragType] = useState(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+  )
   const todoInputRef = useRef(null)
   const sessionCount= completed.length;
 
@@ -52,6 +74,8 @@ const App = () => {
       // ignore
     }
   }, [theme])
+
+  
 
   function persistTodos(newList) {
     localStorage.setItem('todos', JSON.stringify({ todos: newList }))
@@ -215,6 +239,10 @@ const App = () => {
     const { active, over } = event
     if (!over) return
 
+    if (isListSectionId(active.id) || isListSectionId(over.id)) {
+      return
+    }
+
     const activeContainer = findContainer(active.id)
     const overContainer = findContainer(over.id)
 
@@ -249,23 +277,77 @@ const App = () => {
     applyContainerState(secondUpdate.nextTodos, secondUpdate.nextLists)
   }
 
+  const handleDragStart = (event) => {
+    setActiveDragId(event.active.id)
+    setActiveDragType(isListSectionId(event.active.id) ? 'list-section' : 'todo-item')
+  }
+
+  const handleDragCancel = () => {
+    setActiveDragId(null)
+    setActiveDragType(null)
+  }
+
   //Handling todo movement
   const handleDragEnd = (event) => {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    if (!over || active.id === over.id) {
+      setActiveDragId(null)
+      setActiveDragType(null)
+      return
+    }
+
+    const activeIsListSection = isListSectionId(active.id)
+    const overIsListSection = isListSectionId(over.id)
+
+    if (activeIsListSection && overIsListSection) {
+      const activeListId = parseListIdFromSectionId(active.id)
+      const overListId = parseListIdFromSectionId(over.id)
+
+      const oldIndex = lists.findIndex((list) => list.id === activeListId)
+      const newIndex = lists.findIndex((list) => list.id === overListId)
+
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+        setActiveDragId(null)
+        setActiveDragType(null)
+        return
+      }
+
+      const reorderedLists = arrayMove(lists, oldIndex, newIndex)
+      setLists(reorderedLists)
+      persistLists(reorderedLists)
+      setActiveDragId(null)
+      setActiveDragType(null)
+      return
+    }
+
+    if (activeIsListSection || overIsListSection) {
+      setActiveDragId(null)
+      setActiveDragType(null)
+      return
+    }
 
     const activeContainer = findContainer(active.id)
     const overContainer = findContainer(over.id)
-    if (!activeContainer || !overContainer || activeContainer !== overContainer) return
+    if (!activeContainer || !overContainer || activeContainer !== overContainer) {
+      setActiveDragId(null)
+      setActiveDragType(null)
+      return
+    }
 
     const containerItems = getContainerItems(activeContainer)
     const oldIndex = containerItems.findIndex((item) => item.id === active.id)
     const newIndex = containerItems.findIndex((item) => item.id === over.id)
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+      setActiveDragId(null)
+      setActiveDragType(null)
+      return
+    }
 
     const reordered = arrayMove(containerItems, oldIndex, newIndex)
     const updatedState = setItemsForContainer(activeContainer, reordered, todos, lists)
     applyContainerState(updatedState.nextTodos, updatedState.nextLists)
+    setActiveDragId(null)
+    setActiveDragType(null)
   }
 
   // lists
@@ -388,15 +470,26 @@ const App = () => {
         setTodoValue={setTodoValue}
         handleAddTodos={handleAddTodos}
       />
-      <DndContext collisionDetection={closestCenter} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={listSectionCollisionDetection}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <TodoList
           containerId={ROOT_TODO_CONTAINER}
+          activeDragId={activeDragId}
+          isInteractionDisabled={activeDragType === 'list-section'}
           handleCompleteTodo={handleCompleteTodo}
           handleEditTodo={handleEditTodo}
           handleDeleteTodo={handleDeleteTodo}
           todos={todos}
         />
         <ListsContainer
+          activeDragId={activeDragId}
+          activeDragType={activeDragType}
           lists={lists}
           activeListId={activeListId}
           onSelectList={setActiveListId}
