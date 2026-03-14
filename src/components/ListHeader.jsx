@@ -1,9 +1,16 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import TodoList from './TodoList'
 
-const ListHeader = ({ id, initialTitle, todos = [], isActive, onSelect, onDelete, onUpdate, onDeleteTodo, onEditTodo, onCompleteTodo }) => {
-    const [isEditing, setIsEditing] = useState(true);
+const ListHeader = ({ id, initialTitle, todos = [], isActive, onSelect, shouldAutoEdit, onAutoEditHandled, onDelete, onUpdate, onDeleteTodo, onEditTodo, onCompleteTodo }) => {
+    const [isEditing, setIsEditing] = useState(false);
     const [title, setTitle] = useState(initialTitle);
+
+    useEffect(() => {
+        if (!shouldAutoEdit) return
+
+        setIsEditing(true)
+        onAutoEditHandled?.()
+    }, [shouldAutoEdit, onAutoEditHandled])
 
     const toggleEdit = () => {
         setIsEditing(!isEditing);

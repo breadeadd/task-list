@@ -5,6 +5,8 @@ const ListsContainer = ({
   lists,
   activeListId,
   onSelectList,
+  pendingRenameListId,
+  onRenamePromptHandled,
   handleAddList,
   handleDeleteList,
   handleUpdateListTitle,
@@ -26,6 +28,8 @@ const ListsContainer = ({
           todos={list.todos}
           isActive={activeListId === list.id}
           onSelect={onSelectList}
+          shouldAutoEdit={pendingRenameListId === list.id}
+          onAutoEditHandled={onRenamePromptHandled}
           onDelete = {handleDeleteList}
           onUpdate = {handleUpdateListTitle}
           onDeleteTodo={handleDeleteListTodo}

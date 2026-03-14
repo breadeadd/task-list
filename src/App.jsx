@@ -18,6 +18,7 @@ const App = () => {
   const [completed, setCompleted] = useState([]);
   const [lists, setLists] = useState([])
   const [activeListId, setActiveListId] = useState(null)
+  const [pendingRenameListId, setPendingRenameListId] = useState(null)
   const sessionCount= completed.length;
 
   //theme save
@@ -245,6 +246,7 @@ const App = () => {
     const updatedLists = [...lists, newList]
     setLists(updatedLists)
     setActiveListId(newList.id)
+    setPendingRenameListId(newList.id)
     persistLists(updatedLists)
   }
 
@@ -357,6 +359,8 @@ const App = () => {
           lists={lists}
           activeListId={activeListId}
           onSelectList={setActiveListId}
+          pendingRenameListId={pendingRenameListId}
+          onRenamePromptHandled={() => setPendingRenameListId(null)}
           handleAddList={handleAddList}
           handleDeleteList={handleDeleteList}
           handleUpdateListTitle={handleUpdateListTitle}
