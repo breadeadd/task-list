@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import TodoList from './TodoList'
 
 const ListHeader = ({ id, initialTitle, todos = [], isActive, onSelect, onDelete, onUpdate, onDeleteTodo, onEditTodo, onCompleteTodo }) => {
-    const [isEditing, setIsEditing] = useState(false);
+    const [isEditing, setIsEditing] = useState(true);
     const [title, setTitle] = useState(initialTitle);
 
     const toggleEdit = () => {
@@ -26,6 +26,7 @@ const ListHeader = ({ id, initialTitle, todos = [], isActive, onSelect, onDelete
                       type = "text"
                       value = {title}
                       autoFocus
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setTitle(e.target.value)}
                       onKeyDown={(e) => {if (e.key === "Enter") handleSave()}}
                   />
