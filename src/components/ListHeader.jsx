@@ -1,11 +1,19 @@
 import React, { useState } from 'react'
 
-const ListHeader = ({ id, initialTitle, onDelete }) => {
+const ListHeader = ({ id, initialTitle, onDelete, onUpdate }) => {
     const [isEditing, setIsEditing] = useState(false);
-    const [title, setTitle] = useState("New list");
+    const [title, setTitle] = useState(initialTitle);
 
     const toggleEdit = () => {
         setIsEditing(!isEditing);
+    }
+
+    const handleSave = () => {
+        const cleanedTitle = title.trim();
+        const nextTitle = cleanedTitle || 'New List';
+        setTitle(nextTitle);
+        onUpdate(id, nextTitle);
+        setIsEditing(false);
     }
 
   return (
@@ -17,14 +25,14 @@ const ListHeader = ({ id, initialTitle, onDelete }) => {
                     value = {title}
                     autoFocus
                     onChange={(e) => setTitle(e.target.value)}
-                    onKeyDown={(e) => {if (e.key === "Enter") toggleEdit()}}
+                    onKeyDown={(e) => {if (e.key === "Enter") handleSave()}}
                 />
-                <i onClick={toggleEdit} class="fa-regular fa-floppy-disk"></i>
+                <i onClick={handleSave} className="fa-regular fa-floppy-disk"></i>
             </>
         ) : (
             <>
                 {title}
-                <i onClick = {toggleEdit} className="fa-solid fa-pencil"></i>
+                <i onClick={() => setIsEditing(true)} className="fa-solid fa-pencil"></i>
             </>
         )}
         <i 

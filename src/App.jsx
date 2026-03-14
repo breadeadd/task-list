@@ -4,7 +4,6 @@ import TodoList from "./components/TodoList"
 import SessionHeader from "./components/SessionHeader" 
 import CompletedList from "./components/CompletedList"
 import ThemeToggle from "./components/ThemeToggle"
-import ListHeader from "./components/ListHeader"
 import ListsContainer from "./components/ListsContainer"
 
 const App = () => {
@@ -13,6 +12,7 @@ const App = () => {
   const [todos, setTodos] = useState([])
   const [todoValue, setTodoValue] = useState('')
   const [completed, setCompleted] = useState([]);
+  const [lists, setLists] = useState([])
   const sessionCount= completed.length;
 
   //theme save
@@ -76,6 +76,35 @@ const App = () => {
     persistCompleted([])
   }
 
+  // lists
+  function persistLists(newListArray) {
+    localStorage.setItem('lists', JSON.stringify({ lists: newListArray }))
+  }
+
+  function handleAddList() {
+    const newList = {
+      id: Date.now(),
+      title: 'New List'
+    }
+    const updatedLists = [...lists, newList]
+    setLists(updatedLists)
+    persistLists(updatedLists)
+  }
+
+  function handleDeleteList(id) {
+    const updatedLists = lists.filter(list => list.id !== id)
+    setLists(updatedLists)
+    persistLists(updatedLists)
+  }
+
+  function handleUpdateListTitle(id, newTitle) {
+    const updatedLists = lists.map(list => 
+      list.id === id ? { ...list, title: newTitle } : list
+    )
+    setLists(updatedLists)
+    persistLists(updatedLists)
+  }
+
   function handleUndoCompleted(index) {
     //get todo object
     const todoToRestore = completed[index]
@@ -110,6 +139,13 @@ const App = () => {
       setCompleted(parsedCompleted)
     }
 
+    // lists
+    const localListsRaw = localStorage.getItem('lists')
+    if (localListsRaw) {
+      const parsedLists = JSON.parse(localListsRaw).lists || []
+      setLists(parsedLists)
+    }
+
   }, [])
 
   return (
@@ -117,7 +153,12 @@ const App = () => {
       <ThemeToggle theme={theme} setTheme={setTheme} />
       <TodoInput todoValue={todoValue} setTodoValue={setTodoValue} handleAddTodos={handleAddTodos} />
       <TodoList handleCompleteTodo={handleCompleteTodo} handleEditTodo={handleEditTodo} handleDeleteTodo={handleDeleteTodo} todos={todos} />
-      <ListsContainer />
+      <ListsContainer
+        lists={lists}
+        handleAddList={handleAddList}
+        handleDeleteList={handleDeleteList}
+        handleUpdateListTitle={handleUpdateListTitle}
+      />
       <SessionHeader count={sessionCount} handleResetSession={handleResetSession}/>
       <CompletedList todos={completed} handleUndoCompleted={handleUndoCompleted}/>
     </div>
