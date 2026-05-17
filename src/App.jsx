@@ -533,7 +533,7 @@ const App = () => {
 
   return (
     <div className="App" data-theme={theme}>
-      <button onClick={() => supabase.auth.signOut()}>Sign out</button>
+      <button className="signOutButton" onClick={() => supabase.auth.signOut()}>Sign out</button>
       <ThemeToggle theme={theme} setTheme={setTheme} />
       <TodoInput
         inputRef={todoInputRef}

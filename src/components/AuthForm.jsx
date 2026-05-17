@@ -19,7 +19,7 @@ const AuthForm = () => {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="authForm" onSubmit={handleSubmit}>
       <h2>{isSignUp ? 'Create account' : 'Sign in'}</h2>
       <input
         type="email"
