@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import { DndContext, closestCenter, pointerWithin, useSensor, useSensors, PointerSensor, TouchSensor } from "@dnd-kit/core"
-import { arrayMove } from "@dnd-kit/sortable" 
+import { arrayMove } from "@dnd-kit/sortable"
+import { supabase } from './supabase'
+import AuthForm from './components/AuthForm'
 import TodoInput from "./components/TodoInput"
 import TodoList from "./components/TodoList"
-import SessionHeader from "./components/SessionHeader" 
+import SessionHeader from "./components/SessionHeader"
 import CompletedList from "./components/CompletedList"
 import ThemeToggle from "./components/ThemeToggle"
 import ListsContainer from "./components/ListsContainer"
@@ -23,41 +25,95 @@ function isListSectionId(id) {
 }
 
 function parseListIdFromSectionId(id) {
-  return Number(String(id).replace('list-section-', ''))
+  return String(id).replace('list-section-', '')
+}
+
+async function migrateFromLocalStorage(userId) {
+  const localTodos = (() => {
+    try { return JSON.parse(localStorage.getItem('todos'))?.todos || [] } catch { return [] }
+  })()
+  const localCompleted = (() => {
+    try { return JSON.parse(localStorage.getItem('completed'))?.completed || [] } catch { return [] }
+  })()
+  const localLists = (() => {
+    try { return JSON.parse(localStorage.getItem('lists'))?.lists || [] } catch { return [] }
+  })()
+
+  if (localTodos.length > 0) {
+    await supabase.from('todos').insert(
+      localTodos.map((todo, i) => ({
+        user_id: userId, list_id: null, text: todo.text, is_completed: false, position: i
+      }))
+    )
+  }
+
+  if (localCompleted.length > 0) {
+    await supabase.from('todos').insert(
+      localCompleted.map((todo, i) => ({
+        user_id: userId, list_id: null, text: todo.text, is_completed: true, position: i
+      }))
+    )
+  }
+
+  for (const [listIndex, list] of localLists.entries()) {
+    const { data: insertedList, error } = await supabase
+      .from('lists')
+      .insert({ user_id: userId, title: list.title, position: listIndex })
+      .select()
+      .single()
+
+    if (error || !insertedList) continue
+
+    if (list.todos?.length > 0) {
+      await supabase.from('todos').insert(
+        list.todos.map((todo, i) => ({
+          user_id: userId, list_id: insertedList.id, text: todo.text, is_completed: false, position: i
+        }))
+      )
+    }
+  }
+
+  localStorage.removeItem('todos')
+  localStorage.removeItem('completed')
+  localStorage.removeItem('lists')
 }
 
 const App = () => {
 
-  //stateful variable [currentVal, updateFunction] = stateCreated
   const [todos, setTodos] = useState([])
   const [todoValue, setTodoValue] = useState('')
-  const [completed, setCompleted] = useState([]);
+  const [completed, setCompleted] = useState([])
   const [lists, setLists] = useState([])
   const [activeListId, setActiveListId] = useState(null)
   const [pendingRenameListId, setPendingRenameListId] = useState(null)
   const [editingFromListId, setEditingFromListId] = useState(null)
   const [activeDragId, setActiveDragId] = useState(null)
   const [activeDragType, setActiveDragType] = useState(null)
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   )
   const todoInputRef = useRef(null)
-  const sessionCount= completed.length;
+  const sessionCount = completed.length
 
-  function focusTodoInput() {
-    if (!todoInputRef.current) return
-
-    requestAnimationFrame(() => {
-      const input = todoInputRef.current
-      input.focus()
-
-      const end = input.value.length
-      input.setSelectionRange(end, end)
+  // Auth session
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setAuthLoading(false)
     })
-  }
 
-  //theme save
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Theme stays in localStorage — it's a UI preference, not user data
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem('theme') || 'dark'
@@ -75,52 +131,102 @@ const App = () => {
     }
   }, [theme])
 
-  
+  // Load data from Supabase when user is available
+  useEffect(() => {
+    if (!user) return
 
-  function persistTodos(newList) {
-    localStorage.setItem('todos', JSON.stringify({ todos: newList }))
-  }
+    async function loadData() {
+      const { data: listsData, error: listsError } = await supabase
+        .from('lists')
+        .select('*')
+        .order('position')
 
-  function persistCompleted(newList) {
-    localStorage.setItem('completed', JSON.stringify({ completed: newList }))
-  }
-  
-  //Todos
-  function handleAddTodos(newTodo) {
-    const newTodoItem = {
-      id: Date.now(),
-      text: newTodo
-    }
+      if (listsError) { console.error(listsError); return }
 
-    if (editingFromListId !== null) {
-      const listExists = lists.some((list) => list.id === editingFromListId)
+      const { data: todosData, error: todosError } = await supabase
+        .from('todos')
+        .select('*')
+        .order('position')
 
-      if (listExists) {
-        const updatedLists = lists.map((list) =>
-          list.id === editingFromListId
-            ? { ...list, todos: [...list.todos, newTodoItem] }
-            : list
-        )
-        setLists(updatedLists)
-        persistLists(updatedLists)
-        setEditingFromListId(null)
+      if (todosError) { console.error(todosError); return }
+
+      // Migrate localStorage data on first login if Supabase is empty
+      const hasLocalData = localStorage.getItem('todos') || localStorage.getItem('lists')
+      if (hasLocalData && listsData.length === 0 && todosData.length === 0) {
+        await migrateFromLocalStorage(user.id)
+        window.location.reload()
         return
       }
 
+      const rootTodos = todosData.filter(t => !t.list_id && !t.is_completed)
+      const completedTodos = todosData.filter(t => t.is_completed)
+      const hydratedLists = listsData.map(list => ({
+        ...list,
+        todos: todosData.filter(t => t.list_id === list.id && !t.is_completed)
+      }))
+
+      setTodos(rootTodos)
+      setCompleted(completedTodos)
+      setLists(hydratedLists)
+      setActiveListId(hydratedLists[0]?.id ?? null)
+    }
+
+    loadData()
+  }, [user])
+
+  function focusTodoInput() {
+    if (!todoInputRef.current) return
+
+    requestAnimationFrame(() => {
+      const input = todoInputRef.current
+      input.focus()
+
+      const end = input.value.length
+      input.setSelectionRange(end, end)
+    })
+  }
+
+  // Todos
+  async function handleAddTodos(newTodo) {
+    const targetListId = editingFromListId
+    const position = targetListId
+      ? (lists.find(l => l.id === targetListId)?.todos.length ?? 0)
+      : todos.length
+
+    const { data, error } = await supabase
+      .from('todos')
+      .insert({
+        user_id: user.id,
+        list_id: targetListId ?? null,
+        text: newTodo,
+        is_completed: false,
+        position
+      })
+      .select()
+      .single()
+
+    if (error) { console.error(error); return }
+
+    if (targetListId !== null) {
+      if (lists.some(list => list.id === targetListId)) {
+        setLists(prev => prev.map(list =>
+          list.id === targetListId
+            ? { ...list, todos: [...list.todos, data] }
+            : list
+        ))
+        setEditingFromListId(null)
+        return
+      }
       setEditingFromListId(null)
     }
 
-    const newTodoList = [...todos, newTodoItem]
-    persistTodos(newTodoList)
-    setTodos(newTodoList)
+    setTodos(prev => [...prev, data])
   }
 
-  function handleDeleteTodo(index) {
-    const newTodoList = todos.filter((todo, todoIndex) => {
-      return todoIndex !== index
-    })
-    persistTodos(newTodoList)
-    setTodos(newTodoList)
+  async function handleDeleteTodo(index) {
+    const todo = todos[index]
+    setTodos(prev => prev.filter((_, i) => i !== index))
+    await supabase.from('todos').delete().eq('id', todo.id)
   }
 
   function handleEditTodo(index) {
@@ -131,33 +237,37 @@ const App = () => {
     focusTodoInput()
   }
 
-  function handleCompleteTodo(index) {
+  async function handleCompleteTodo(index) {
     const todo = todos[index]
-    setCompleted((prev) => {
-      const updated = [...prev, todo]
-      persistCompleted(updated)
-      return updated
-    })
-    handleDeleteTodo(index)
+    setTodos(prev => prev.filter((_, i) => i !== index))
+    setCompleted(prev => [...prev, { ...todo, is_completed: true }])
+    await supabase.from('todos').update({ is_completed: true }).eq('id', todo.id)
   }
 
-  function handleResetSession() {
+  async function handleResetSession() {
+    const completedIds = completed.map(t => t.id)
     setCompleted([])
-    persistCompleted([])
+    if (completedIds.length > 0) {
+      await supabase.from('todos').delete().in('id', completedIds)
+    }
   }
 
-  function handleDeleteListTodo(listId, index) {
-    const updatedLists = lists.map((list) =>
+  async function handleDeleteListTodo(listId, index) {
+    const listToUpdate = lists.find(list => list.id === listId)
+    if (!listToUpdate) return
+    const todo = listToUpdate.todos[index]
+    if (!todo) return
+
+    setLists(prev => prev.map(list =>
       list.id === listId
-        ? { ...list, todos: list.todos.filter((_, todoIndex) => todoIndex !== index) }
+        ? { ...list, todos: list.todos.filter((_, i) => i !== index) }
         : list
-    )
-    setLists(updatedLists)
-    persistLists(updatedLists)
+    ))
+    await supabase.from('todos').delete().eq('id', todo.id)
   }
 
   function handleEditListTodo(listId, index) {
-    const listToEdit = lists.find((list) => list.id === listId)
+    const listToEdit = lists.find(list => list.id === listId)
     if (!listToEdit) return
 
     const valueToBeEdited = listToEdit.todos[index]
@@ -169,20 +279,20 @@ const App = () => {
     focusTodoInput()
   }
 
-  function handleCompleteListTodo(listId, index) {
-    const listToUpdate = lists.find((list) => list.id === listId)
+  async function handleCompleteListTodo(listId, index) {
+    const listToUpdate = lists.find(list => list.id === listId)
     if (!listToUpdate) return
 
     const todo = listToUpdate.todos[index]
     if (!todo) return
 
-    setCompleted((prev) => {
-      const updatedCompleted = [...prev, todo]
-      persistCompleted(updatedCompleted)
-      return updatedCompleted
-    })
-
-    handleDeleteListTodo(listId, index)
+    setLists(prev => prev.map(list =>
+      list.id === listId
+        ? { ...list, todos: list.todos.filter((_, i) => i !== index) }
+        : list
+    ))
+    setCompleted(prev => [...prev, { ...todo, is_completed: true }])
+    await supabase.from('todos').update({ is_completed: true }).eq('id', todo.id)
   }
 
   function findContainer(id) {
@@ -207,15 +317,13 @@ const App = () => {
       return todos
     }
 
-    const listId = Number(String(containerId).replace('list-', ''))
+    const listId = String(containerId).replace('list-', '')
     return lists.find((list) => list.id === listId)?.todos || []
   }
 
   function applyContainerState(nextTodos, nextLists) {
     setTodos(nextTodos)
     setLists(nextLists)
-    persistTodos(nextTodos)
-    persistLists(nextLists)
   }
 
   function setItemsForContainer(containerId, nextItems, currentTodos, currentLists) {
@@ -226,12 +334,31 @@ const App = () => {
       }
     }
 
-    const listId = Number(String(containerId).replace('list-', ''))
+    const listId = String(containerId).replace('list-', '')
     return {
       nextTodos: currentTodos,
       nextLists: currentLists.map((list) =>
         list.id === listId ? { ...list, todos: nextItems } : list
       )
+    }
+  }
+
+  function persistDragState(currentTodos, currentLists) {
+    const allUpdates = [
+      ...currentTodos.map((todo, i) => ({
+        id: todo.id, user_id: user.id, list_id: null,
+        text: todo.text, is_completed: todo.is_completed ?? false, position: i
+      })),
+      ...currentLists.flatMap(list =>
+        list.todos.map((todo, i) => ({
+          id: todo.id, user_id: user.id, list_id: list.id,
+          text: todo.text, is_completed: todo.is_completed ?? false, position: i
+        }))
+      )
+    ]
+    if (allUpdates.length > 0) {
+      supabase.from('todos').upsert(allUpdates)
+        .then(({ error }) => { if (error) console.error(error) })
     }
   }
 
@@ -287,7 +414,6 @@ const App = () => {
     setActiveDragType(null)
   }
 
-  //Handling todo movement
   const handleDragEnd = (event) => {
     const { active, over } = event
     if (!over || active.id === over.id) {
@@ -314,7 +440,12 @@ const App = () => {
 
       const reorderedLists = arrayMove(lists, oldIndex, newIndex)
       setLists(reorderedLists)
-      persistLists(reorderedLists)
+      supabase.from('lists').upsert(
+        reorderedLists.map((list, index) => ({
+          id: list.id, user_id: user.id, title: list.title, position: index
+        }))
+      ).then(({ error }) => { if (error) console.error(error) })
+
       setActiveDragId(null)
       setActiveDragType(null)
       return
@@ -328,7 +459,10 @@ const App = () => {
 
     const activeContainer = findContainer(active.id)
     const overContainer = findContainer(over.id)
+
     if (!activeContainer || !overContainer || activeContainer !== overContainer) {
+      // Cross-container move: state was set optimistically in handleDragOver, now persist it
+      persistDragState(todos, lists)
       setActiveDragId(null)
       setActiveDragType(null)
       return
@@ -338,6 +472,9 @@ const App = () => {
     const oldIndex = containerItems.findIndex((item) => item.id === active.id)
     const newIndex = containerItems.findIndex((item) => item.id === over.id)
     if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
+      // newIndex is -1 when the drop target is the container itself (e.g. an empty list).
+      // handleDragOver already moved the item in state, so persist that state now.
+      persistDragState(todos, lists)
       setActiveDragId(null)
       setActiveDragType(null)
       return
@@ -346,123 +483,57 @@ const App = () => {
     const reordered = arrayMove(containerItems, oldIndex, newIndex)
     const updatedState = setItemsForContainer(activeContainer, reordered, todos, lists)
     applyContainerState(updatedState.nextTodos, updatedState.nextLists)
+    persistDragState(updatedState.nextTodos, updatedState.nextLists)
+
     setActiveDragId(null)
     setActiveDragType(null)
   }
 
-  // lists
-  function persistLists(newListArray) {
-    localStorage.setItem('lists', JSON.stringify({ lists: newListArray }))
-  }
+  // Lists
+  async function handleAddList() {
+    const { data, error } = await supabase
+      .from('lists')
+      .insert({ user_id: user.id, title: 'New List', position: lists.length })
+      .select()
+      .single()
 
-  function handleAddList() {
-    const newList = {
-      id: Date.now(),
-      title: 'New List',
-      todos: []
-    }
-    const updatedLists = [...lists, newList]
-    setLists(updatedLists)
+    if (error) { console.error(error); return }
+
+    const newList = { ...data, todos: [] }
+    setLists(prev => [...prev, newList])
     setActiveListId(newList.id)
     setPendingRenameListId(newList.id)
-    persistLists(updatedLists)
   }
 
-  function handleDeleteList(id) {
+  async function handleDeleteList(id) {
     const updatedLists = lists.filter(list => list.id !== id)
     setLists(updatedLists)
     if (activeListId === id) {
       setActiveListId(updatedLists[0]?.id ?? null)
     }
-    persistLists(updatedLists)
+    await supabase.from('lists').delete().eq('id', id)
   }
 
-  function handleUpdateListTitle(id, newTitle) {
-    const updatedLists = lists.map(list => 
+  async function handleUpdateListTitle(id, newTitle) {
+    setLists(prev => prev.map(list =>
       list.id === id ? { ...list, title: newTitle } : list
-    )
-    setLists(updatedLists)
-    persistLists(updatedLists)
+    ))
+    await supabase.from('lists').update({ title: newTitle }).eq('id', id)
   }
 
-  function handleUndoCompleted(index) {
-    //get todo object
-    const todoToRestore = completed[index]
-    //add back to the todo list
-    const newTodoList = [...todos, todoToRestore]
-    persistTodos(newTodoList)
-    setTodos(newTodoList)
-    
-    //remove from completed list
-    const newCompletedList = completed.filter((_, completedIndex) => {
-      return completedIndex !== index
-    })
-    persistCompleted(newCompletedList)
-    setCompleted(newCompletedList)
+  async function handleUndoCompleted(index) {
+    const todo = completed[index]
+    setCompleted(prev => prev.filter((_, i) => i !== index))
+    setTodos(prev => [...prev, { ...todo, is_completed: false }])
+    await supabase.from('todos').update({ is_completed: false }).eq('id', todo.id)
   }
 
-  // Runs when app starts
-  useEffect(() => {
-    if (!localStorage) {
-      return
-    }
-
-    const localTodosRaw = localStorage.getItem('todos')
-    if (localTodosRaw) {
-      const parsed = (JSON.parse(localTodosRaw).todos || []).map((todo, index) => {
-        if (typeof todo === 'string') {
-          return {
-            id: Date.now() + index,
-            text: todo
-          }
-        }
-
-        return todo
-      })
-      setTodos(parsed)
-    }
-
-    const localCompletedRaw = localStorage.getItem('completed')
-    if (localCompletedRaw) {
-      const parsedCompleted = (JSON.parse(localCompletedRaw).completed || []).map((todo, index) => {
-        if (typeof todo === 'string') {
-          return {
-            id: Date.now() + index,
-            text: todo
-          }
-        }
-
-        return todo
-      })
-      setCompleted(parsedCompleted)
-    }
-
-    // lists
-    const localListsRaw = localStorage.getItem('lists')
-    if (localListsRaw) {
-      const parsedLists = (JSON.parse(localListsRaw).lists || []).map((list) => ({
-        ...list,
-        todos: Array.isArray(list.todos)
-          ? list.todos.map((todo, index) => {
-              if (typeof todo === 'string') {
-                return {
-                  id: Date.now() + index,
-                  text: todo
-                }
-              }
-
-              return todo
-            })
-          : []
-      }))
-      setLists(parsedLists)
-      setActiveListId(parsedLists[0]?.id ?? null)
-    }
-
-  }, [])
+  if (authLoading) return <div>Loading...</div>
+  if (!user) return <AuthForm />
 
   return (
     <div className="App" data-theme={theme}>
+      <button className="signOutButton" onClick={() => supabase.auth.signOut()}>Sign out</button>
       <ThemeToggle theme={theme} setTheme={setTheme} />
       <TodoInput
         inputRef={todoInputRef}
